@@ -40,7 +40,7 @@ def compile_quiz_data(sport, difficulty, api_key):
     unified_context = f"=== HISTORICAL FACTS (Sourced from Local Vector Memory) ===\n{db_context}\n\n=== LIVE INTERNET NEWS ===\n{web_context}"
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-3.5-flash')
     
     prompt = (
         "You are an expert sports quiz creator. Your job is to write multiple-choice quizzes "
