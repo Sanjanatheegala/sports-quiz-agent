@@ -48,18 +48,20 @@ def compile_quiz_data(sport, difficulty, api_key):
         f"found in the Context details below.\n\nCONTEXT DETAILS: \n{unified_context}\n\n"
         f"Generate exactly 3 unique multiple-choice questions for the sport: {sport}.\n"
         f"Difficulty target: {difficulty}.\n\n"
-        "Format each question exactly as follows so my program can parse it:\n"
-        "Question: [Question text here]\n"
-        "A) [Option A]\n"
-        "B) [Option B]\n"
-        "C) [Option C]\n"
-        "D) [Option D]\n"
-        "Correct Answer: [Single Letter, e.g., A]\n"
-        "Explanation: [Detailed reasoning quoting from the context details]\n"
+        "You MUST respond ONLY with a raw JSON array matching this structure exactly (do not wrap in markdown blocks):\n"
+        "[\n"
+        "  {\n"
+        "    \"question\": \"Question text here?\",\n"
+        "    \"options\": [\"Option 1\", \"Option 2\", \"Option 3\", \"Option 4\"],\n"
+        "    \"correct_index\": 0,\n"
+        "    \"explanation\": \"Detailed reasoning quoting from context\"\n"
+        "  }\n"
+        "]"
     )
     
     response = model.generate_content(prompt)
-    return response.text, unified_context
+    clean_text = response.text.strip().lstrip("```json").rstrip("```").strip()
+    return json.loads(clean_text), unified_context
 
 
 st.set_page_config(page_title="Sports Quiz Agent", page_icon="🏆")
@@ -75,23 +77,53 @@ else:
     sport_choice = st.sidebar.selectbox("Select Sport", ["Cricket", "Football", "Badminton"])
     difficulty = st.sidebar.select_slider("Select Difficulty", options=["Easy", "Medium", "Hard"])
 
-    if "quiz_output" not in st.session_state:
-        st.session_state.quiz_output = None
+    
+    if "quiz_data" not in st.session_state:
+        st.session_state.quiz_data = None
         st.session_state.quiz_context = None
+        st.session_state.answers_submitted = {}
 
     if st.sidebar.button("Generate Fresh Quiz", use_container_width=True):
         with st.spinner("Analyzing historic vectors and scouring the web..."):
             try:
-                quiz_text, context_used = compile_quiz_data(sport_choice, difficulty, api_key)
-                st.session_state.quiz_output = quiz_text
+                quiz_json, context_used = compile_quiz_data(sport_choice, difficulty, api_key)
+                st.session_state.quiz_data = quiz_json
                 st.session_state.quiz_context = context_used
+                st.session_state.answers_submitted = {}  # Reset previous gameplay
                 st.success("Quiz generated successfully!")
             except Exception as e:
-                st.error(f"Execution Error: {e}")
+                st.error(f"Execution Error Parsing JSON: {e}")
 
-    if st.session_state.quiz_output:
+   
+    if st.session_state.quiz_data:
         st.subheader(f"Current Quiz: {sport_choice} ({difficulty})")
-        st.text_area("Generated Quiz Template Output", value=st.session_state.quiz_output, height=350)
         
+        for idx, q in enumerate(st.session_state.quiz_data):
+            st.markdown(f"### Q{idx+1}: {q['question']}")
+            
+            
+            choice = st.radio(
+                f"Choose your answer for Q{idx+1}:", 
+                q['options'], 
+                key=f"q_{idx}",
+                label_visibility="collapsed"
+            )
+            
+            
+            if st.button(f"Submit Answer for Q{idx+1}", key=f"btn_{idx}"):
+                st.session_state.answers_submitted[idx] = choice
+                
+            if idx in st.session_state.answers_submitted:
+                selected_val = st.session_state.answers_submitted[idx]
+                correct_val = q['options'][q['correct_index']]
+                
+                if selected_val == correct_val:
+                    st.success(f"Correct! 🎉 You selected: {selected_val}")
+                    st.info(f"**Explanation:** {q['explanation']}")
+                else:
+                    st.error(f"Wrong Answer ❌ You selected: {selected_val}")
+                    st.info(f"**Correct Option:** {correct_val}\n\n**Explanation:** {q['explanation']}")
+            st.write("---")
+            
         with st.expander("🔍 Inspect Ground Truth Data Context (RAG Audit Check)"):
             st.code(st.session_state.quiz_context, language="markdown")
